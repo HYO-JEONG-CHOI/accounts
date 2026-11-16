@@ -7,7 +7,8 @@
   const APP_ID = 'hyojeong-budget';
   const BACKUP_VERSION = 1;
   const MAX_AMOUNT = 999999999999;
-  const BUDGET_KEY = /^(M:\d{4}-\d{2}|W:\d{4}-\d{2}-W[1-6])$/;
+  // W:2026-11-02 = 그 주 월요일. W:2026-11-W1 은 예전 백업 형식(불러온 뒤 새 형식으로 옮김)
+  const BUDGET_KEY = /^(M:\d{4}-\d{2}|W:\d{4}-\d{2}-\d{2}|W:\d{4}-\d{2}-W[1-6])$/;
   const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
   // ---------- 백업 파일 검증 (순수 함수) ----------
@@ -116,6 +117,14 @@
       else t.objectStore('budgets').put({ key, amount });
     });
   }
+  // 예산 여러 개를 한 번에 바꿈 (주차 형식 변환용, 실패하면 아무것도 안 바뀜)
+  function applyBudgetChanges(removeKeys, setMap) {
+    return tx(['budgets'], 'readwrite', t => {
+      const bs = t.objectStore('budgets');
+      removeKeys.forEach(k => bs.delete(k));
+      Object.entries(setMap).forEach(([key, amount]) => bs.put({ key, amount }));
+    });
+  }
   const setSetting = (key, value) => tx(['settings'], 'readwrite', t => { t.objectStore('settings').put({ key, value }); });
 
   // 복원: 한 트랜잭션으로 전체 교체 (실패하면 기존 데이터 유지)
@@ -144,7 +153,7 @@
     return null;
   }
 
-  const api = { parseBackup, buildBackup, newId, loadAll, saveExpense, deleteExpense, setBudget, setSetting, replaceAll, clearAll, requestPersist, MAX_AMOUNT };
+  const api = { parseBackup, buildBackup, newId, loadAll, saveExpense, deleteExpense, setBudget, applyBudgetChanges, setSetting, replaceAll, clearAll, requestPersist, MAX_AMOUNT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Store = api;
 })(typeof self !== 'undefined' ? self : this);

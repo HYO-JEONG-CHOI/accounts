@@ -24,8 +24,22 @@
     return `${m}월 ${d}일 (${WD[C.weekday(y, m, d)]})`;
   }
   function rangeLabel(w) {
-    const wd = d => WD[C.weekday(state.y, state.m, d)];
-    return w.startDay === w.endDay ? `${state.m}.${w.startDay}(${wd(w.startDay)})` : `${state.m}.${w.startDay} ~ ${state.m}.${w.endDay}`;
+    return `${w.s.m}.${w.s.d} ~ ${w.e.m}.${w.e.d}`;
+  }
+  // 이 달 날짜 중 앞뒤 달 주차에 들어가는 날짜 안내
+  function outsideNote() {
+    const { y, m } = state, o = C.outsideDays(y, m), parts = [];
+    const span = (a, b) => a === b ? `${m}월 ${a}일` : `${m}월 ${a}~${b}일`;
+    if (o.before) { const p = C.addMonths(y, m, -1); parts.push(`${span(1, o.before)}은 ${p.m}월 마지막 주차`); }
+    if (o.after) { const nx = C.addMonths(y, m, 1); parts.push(`${span(o.after, o.n)}은 ${nx.m}월 1주차`); }
+    return parts.length ? `<p class="notice">${parts.join(', ')}에 들어가요.</p>` : '';
+  }
+  // 데이터 불러오기 + 예전 주차 예산을 새 주차로 옮기기
+  async function loadData() {
+    const d = await S.loadAll();
+    const mig = C.migrateWeekBudgets(d.budgets);
+    if (mig.changed) { await S.applyBudgetChanges(mig.remove, mig.set); d.budgets = mig.budgets; }
+    return d;
   }
   function bar(rate, thin) {
     const over = rate != null && rate > 1;
@@ -134,7 +148,7 @@
       </button>`).join('');
 
     $('#view-budget').innerHTML = monthCard + compare +
-      `<div class="card"><div class="card-title"><span>주차별 예산</span><span class="sub">월~일 기준 · ${s.weeks.length}주</span></div>${weeks}</div>`;
+      `<div class="card"><div class="card-title"><span>주차별 예산</span><span class="sub">월~일 7일 · ${s.weeks.length}주</span></div>${weeks}${outsideNote()}</div>`;
   }
 
   // ③ 통계
@@ -545,7 +559,7 @@
     if (!ok) return;
     try {
       await S.replaceAll(parsed);
-      state.data = await S.loadAll();
+      state.data = await loadData();
       applyTheme(); goToday(); render();
       toast('복원했어요');
     } catch (ex) { toast('복원하지 못했어요. 기존 데이터는 그대로예요.'); }
@@ -570,7 +584,7 @@
     'edit-month-budget': () => openBudgetSheet({ title: `${state.y}년 ${state.m}월 총예산`, desc: '주차별 예산과 별도로 관리돼요.', key: C.monthBudgetKey(state.y, state.m) }),
     'edit-week-budget': el => {
       const w = C.weeksOfMonth(state.y, state.m).find(x => x.key === el.dataset.key);
-      openBudgetSheet({ title: `${state.m}월 ${w.index}주차 예산`, desc: `${rangeLabel(w)} · ${w.days}일 (이 달에 속한 날짜만 집계)`, key: C.weekBudgetKey(w.key) });
+      openBudgetSheet({ title: `${state.m}월 ${w.index}주차 예산`, desc: `${rangeLabel(w)} · 월~일 7일`, key: C.weekBudgetKey(w.key) });
     },
     'stats-day': el => { state.statsDay = Number(el.dataset.day); render(); },
     'open-day': el => { state.selected = el.dataset.date; state.tab = 'calendar'; render(); scrollTo(0, 0); },
@@ -617,7 +631,7 @@
   (async function start() {
     render();
     try {
-      state.data = await S.loadAll();
+      state.data = await loadData();
     } catch (e) {
       toast('저장소를 열 수 없어요. 사생활 보호 모드에서는 저장되지 않을 수 있어요.');
     }

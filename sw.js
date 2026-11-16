@@ -1,5 +1,5 @@
 // 오프라인 실행: 앱 파일을 휴대폰에 저장해 두고, 온라인일 때 새 버전으로 갱신
-const CACHE = 'hyojeong-budget-v1';
+const CACHE = 'hyojeong-budget-v2';
 const ASSETS = [
   './', './index.html', './css/app.css', './js/calc.js', './js/store.js', './js/app.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
