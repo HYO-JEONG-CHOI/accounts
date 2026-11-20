@@ -62,7 +62,9 @@
 
   // ① 캘린더
   function renderCalendar(s) {
-    const { y, m } = state, n = C.daysInMonth(y, m), lead = C.weekday(y, m, 1), today = todayStr();
+    const { y, m } = state, n = C.daysInMonth(y, m), today = todayStr();
+    // 달력 보기만 일요일 시작 (주차 계산은 그대로 월~일)
+    const lead = (C.weekday(y, m, 1) + 1) % 7;
     let cells = '<div class="day empty"></div>'.repeat(lead);
     for (let d = 1; d <= n; d++) {
       const date = C.ymd(y, m, d), amt = s.days[d], wd = C.weekday(y, m, d);
@@ -79,7 +81,7 @@
 
     $('#view-calendar').innerHTML = `
       <div class="card" id="calCard">
-        <div class="cal-head">${WD.map((w, i) => `<span class="${i === 5 ? 'sat' : i === 6 ? 'sun' : ''}">${w}</span>`).join('')}</div>
+        <div class="cal-head">${['일', '월', '화', '수', '목', '금', '토'].map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
         <div class="cal-grid">${cells}</div>
       </div>
       <div class="card">
@@ -135,7 +137,9 @@
   let sheetOpen = false;
   function openSheet(html, mount) {
     const sheet = $('#sheet');
-    sheet.innerHTML = html;
+    // 모든 하단 창 오른쪽 위에 닫기 버튼 (어두운 바깥 영역을 눌러도 닫힘)
+    sheet.innerHTML = `<button type="button" class="sheet-close" aria-label="닫기"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` + html;
+    sheet.querySelector('.sheet-close').onclick = closeSheet;
     sheet.hidden = false;
     $('#backdrop').hidden = false;
     if (!sheetOpen) { history.pushState({ sheet: true }, ''); sheetOpen = true; }
@@ -156,6 +160,9 @@
   $('#backdrop').addEventListener('click', closeSheet);
 
   function bindMoney(input) {
+    // PC(윈도우)에서는 숫자 전용 칸에 들어가면 한글 입력기가 영어로 바뀌고 그대로 남음
+    // → 숫자 키패드가 필요한 휴대폰에서만 숫자 모드 사용
+    if (!matchMedia('(pointer: coarse)').matches) input.removeAttribute('inputmode');
     input.addEventListener('input', () => {
       const digits = input.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 12);
       input.value = digits ? C.formatNum(Number(digits)) : '';
@@ -193,7 +200,7 @@
           <div class="quick">${[1000, 5000, 10000, 50000].map(v => `<button type="button" data-add="${v}">+${C.formatNum(v)}</button>`).join('')}</div>
         </div>
         <label class="field"><span>지출 내역</span>
-          <input class="input" id="fMemo" maxlength="100" enterkeyhint="done" placeholder="예: 점심 김밥" list="memoList" value="${edit ? esc(exp.memo) : ''}">
+          <input class="input" id="fMemo" lang="ko" inputmode="text" autocapitalize="off" maxlength="100" enterkeyhint="done" placeholder="예: 점심 김밥" list="memoList" value="${edit ? esc(exp.memo) : ''}">
           <datalist id="memoList">${recentMemos().map(mm => `<option value="${esc(mm)}">`).join('')}</datalist>
         </label>
         <label class="field"><span>날짜</span><input class="input" type="date" id="fDate" value="${edit ? exp.date : state.selected}"></label>
