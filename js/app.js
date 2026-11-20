@@ -290,7 +290,6 @@
       <form id="pinForm" autocomplete="off" novalidate>
         <div class="field"><input class="input num pin" id="pinInput" type="password" inputmode="numeric" maxlength="4" enterkeyhint="done" aria-label="비밀번호"></div>
         <div class="err" id="pinErr"></div>
-        <button type="submit" class="btn primary" style="width:100%">확인</button>
       </form>`, sheet => {
       const input = sheet.querySelector('#pinInput'), err = sheet.querySelector('#pinErr');
       input.focus();
