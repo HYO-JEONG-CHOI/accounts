@@ -11,15 +11,11 @@
 
   const t0 = todayP();
   const TABS = ['calendar', 'budget', 'settings'];
-  // 처음 들어오면 보기 전용. 비밀번호를 넣으면 이 기기에서는 계속 풀린 상태
-  const PIN = '0325', UNLOCK_KEY = 'hyojeong-budget-unlocked';
-  const readUnlocked = () => { try { return localStorage.getItem(UNLOCK_KEY) === '1'; } catch (e) { return false; } };
-  const writeUnlocked = v => { try { v ? localStorage.setItem(UNLOCK_KEY, '1') : localStorage.removeItem(UNLOCK_KEY); } catch (e) { /* 저장 안 돼도 이번 접속 동안은 유지 */ } };
   const state = {
     tab: 'calendar',
     y: t0.y, m: t0.m, selected: todayStr(),
-    data: { expenses: [], budgets: {}, settings: { theme: 'system', lastBackup: null } },
-    unlocked: readUnlocked(), persisted: null
+    data: { expenses: [], budgets: {}, settings: S.loadSettings() },
+    unlocked: false, legacy: null
   };
 
   // ---------- 공통 조각 ----------
@@ -29,13 +25,6 @@
   }
   function rangeLabel(w) {
     return `${w.s.m}.${w.s.d} ~ ${w.e.m}.${w.e.d}`;
-  }
-  // 데이터 불러오기 + 예전 주차 예산을 새 주차로 옮기기
-  async function loadData() {
-    const d = await S.loadAll();
-    const mig = C.migrateWeekBudgets(d.budgets);
-    if (mig.changed) { await S.applyBudgetChanges(mig.remove, mig.set); d.budgets = mig.budgets; }
-    return d;
   }
   function bar(rate, thin) {
     const over = rate != null && rate > 1;
@@ -124,26 +113,22 @@
   function renderSettings() {
     const { expenses, budgets, settings } = state.data;
     const last = settings.lastBackup ? new Date(settings.lastBackup) : null;
-    const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
-    const needBackup = expenses.length > 0 && (last == null || days >= 14);
-    const persistText = state.persisted === true ? '브라우저가 데이터를 임의로 지우지 않도록 보호되고 있어요.'
-      : state.persisted === false ? '저장 공간 보호가 허용되지 않았어요. 홈 화면에 설치하고 백업을 자주 해 주세요.'
-      : '이 브라우저는 저장 공간 보호 상태를 알려주지 않아요. 백업을 자주 해 주세요.';
+    const lg = state.legacy;
 
     $('#view-settings').innerHTML = `
+      ${lg ? `<div class="card"><div class="card-title"><span>이 휴대폰에 있던 데이터</span><span class="sub">지출 ${C.formatNum(lg.expenses.length)}건</span></div>
+        <div class="btn-row"><button class="btn" data-action="legacy-skip">안 올리기</button><button class="btn primary" style="flex:2" data-action="legacy-upload">온라인에 올리기</button></div>
+      </div>` : ''}
       <div class="card"><div class="card-title"><span>데이터 백업</span></div>
-        ${needBackup ? `<div class="warn-box">${last ? `마지막 백업 후 ${days}일이 지났어요.` : '아직 백업한 적이 없어요.'} 휴대폰을 바꾸거나 앱을 지우면 데이터가 사라지니 백업 파일을 저장해 두세요.</div>` : ''}
         <div class="setting-row"><span>마지막 백업</span><span class="muted num">${last ? `${last.getFullYear()}.${last.getMonth() + 1}.${last.getDate()}` : '없음'}</span></div>
         <div class="btn-row" style="margin-top:6px"><button class="btn primary" data-action="export">백업 파일 저장</button><button class="btn" data-action="restore">백업에서 복원</button></div>
-        <p class="notice">데이터는 이 휴대폰에만 저장되고 다른 곳으로 전송되지 않아요. 백업 파일을 클라우드나 메신저 '나에게 보내기'에 보관하면 휴대폰을 바꿔도 복원할 수 있어요.</p>
       </div>
       <div class="card"><div class="card-title"><span>저장 상태</span></div>
         <div class="setting-row"><span>지출 내역</span><span class="muted num">${C.formatNum(expenses.length)}건</span></div>
         <div class="setting-row"><span>설정된 예산</span><span class="muted num">${Object.keys(budgets).length}개</span></div>
-        <p class="notice">${persistText}</p>
       </div>
       <div class="card"><button class="btn danger" style="width:100%" data-action="clear-all">전체 데이터 삭제</button></div>
-      <div class="foot">효정 가계부 v1.0</div>`;
+      <div class="foot">효정 가계부 v2.0</div>`;
   }
 
   // ---------- 시트 (하단 창) ----------
@@ -293,19 +278,48 @@
       </form>`, sheet => {
       const input = sheet.querySelector('#pinInput'), err = sheet.querySelector('#pinErr');
       input.focus();
-      const check = () => {
-        if (input.value !== PIN) { err.textContent = '비밀번호가 맞지 않아요.'; input.value = ''; input.focus(); return; }
-        state.unlocked = true; writeUnlocked(true);
-        closeSheet(); toast('반가워요, 효정님'); render();
+      let busy = false;
+      const check = async () => {
+        if (busy) return;
+        busy = true; input.disabled = true; err.textContent = '';
+        try {
+          const ok = await S.unlock(input.value);
+          if (!ok) { err.textContent = '비밀번호가 맞지 않아요.'; return; }
+          state.unlocked = true;
+          closeSheet(); toast('반가워요, 효정님'); render();
+          checkLegacy();
+        } catch (ex) {
+          err.textContent = ex.message;
+        } finally {
+          busy = false; input.disabled = false;
+          if (sheetOpen) { input.value = ''; input.focus(); }
+        }
       };
       input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, ''); err.textContent = ''; if (input.value.length === 4) check(); });
       sheet.querySelector('#pinForm').onsubmit = e => { e.preventDefault(); check(); };
     });
   }
-  function lockToggle() {
+  async function lockToggle() {
     if (!state.unlocked) { openPinSheet(); return; }
-    state.unlocked = false; writeUnlocked(false);
-    state.tab = 'calendar'; toast('잠갔어요'); render();
+    state.unlocked = false; state.legacy = null;
+    state.tab = 'calendar'; render(); toast('잠갔어요');
+    try { await S.lock(); } catch (e) { /* 다음에 열 때 다시 확인 */ }
+  }
+
+  // 예전 버전에서 휴대폰에만 저장했던 데이터가 있으면 설정 화면에 '올리기' 표시
+  async function checkLegacy() {
+    if (!state.unlocked) return;
+    state.legacy = await S.legacyRead();
+    if (state.legacy && state.tab === 'settings') render();
+    if (state.legacy) toast('이 휴대폰에 있던 데이터가 있어요. 설정에서 올릴 수 있어요');
+  }
+  async function uploadLegacy() {
+    const lg = state.legacy;
+    if (!lg) return;
+    try {
+      await S.uploadLegacy(lg);
+      state.legacy = null; render(); toast(`지출 ${C.formatNum(lg.expenses.length)}건을 올렸어요`);
+    } catch (e) { toast(e.message && !e.code ? e.message : '올리지 못했어요. 잠시 후 다시 시도해 주세요.'); }
   }
 
   function openMonthPicker() {
@@ -397,18 +411,18 @@
     if (!ok) return;
     try {
       await S.replaceAll(parsed);
-      state.data = await loadData();
-      applyTheme(); goToday(); render();
+      goToday(); render();
       toast('복원했어요');
-    } catch (ex) { toast('복원하지 못했어요. 기존 데이터는 그대로예요.'); }
+    } catch (ex) { toast(ex.message && !ex.code ? ex.message : '복원하지 못했어요. 잠시 후 다시 시도해 주세요.'); }
   });
 
   async function clearAll() {
     const ok = await confirmSheet({ title: '전체 데이터를 삭제할까요?', message: `지출 ${C.formatNum(state.data.expenses.length)}건과 모든 예산이 삭제되고 되돌릴 수 없어요.\n삭제 전에 백업 파일을 저장해 두는 걸 권해요.`, ok: '전체 삭제', danger: true });
     if (!ok) return;
-    await S.clearAll();
-    state.data = { expenses: [], budgets: {}, settings: { theme: 'system', lastBackup: null } };
-    applyTheme(); render(); toast('전체 데이터를 삭제했어요');
+    try {
+      await S.clearAll();
+      render(); toast('전체 데이터를 삭제했어요');
+    } catch (ex) { toast(ex.message && !ex.code ? ex.message : '삭제하지 못했어요. 잠시 후 다시 시도해 주세요.'); }
   }
 
   const ACTIONS = {
@@ -426,7 +440,9 @@
     'export': exportBackup,
     'restore': () => $('#restoreInput').click(),
     'clear-all': clearAll,
-    'lock-toggle': lockToggle
+    'lock-toggle': lockToggle,
+    'legacy-upload': uploadLegacy,
+    'legacy-skip': () => { S.markLegacyDone(); state.legacy = null; render(); }
   };
   // 잠금 상태에서 할 수 있는 것: 달 이동·날짜 선택(보기)과 잠금 풀기뿐
   // 잠금 상태에서는 캘린더·예산 화면 보기만, 설정은 막음
@@ -468,17 +484,27 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !sheetOpen) render(); });
 
   // ---------- 시작 ----------
-  (async function start() {
-    render();
-    try {
-      state.data = await loadData();
-    } catch (e) {
-      toast('저장소를 열 수 없어요. 사생활 보호 모드에서는 저장되지 않을 수 있어요.');
-    }
+  (function start() {
     applyTheme();
     render();
-    state.persisted = await S.requestPersist();
-    if (state.tab === 'settings') render();
+    // 서버가 쓰기를 거부하면(권한 없음 등) 알려주고 잠금 상태로
+    S.onWriteError(err => {
+      if (err && err.code === 'permission-denied') { state.unlocked = false; render(); toast('수정 권한이 없어요. 효정입니다. 버튼으로 다시 확인해 주세요'); }
+      else toast('저장하지 못했어요. 잠시 후 다시 시도해 주세요');
+    });
+    try {
+      S.subscribe(d => {
+        const mig = C.migrateWeekBudgets(d.budgets);   // 예전 주차 예산 형식은 새 형식으로 보여줌
+        if (mig.changed && state.unlocked) S.applyBudgetChanges(mig.remove, mig.set);
+        state.data.expenses = d.expenses;
+        state.data.budgets = mig.budgets;
+        render();
+      }, () => toast('데이터를 불러오지 못했어요. 인터넷 연결을 확인해 주세요'));
+      S.isOwner().then(v => { state.unlocked = v; render(); if (v) checkLegacy(); });
+    } catch (e) {
+      toast(e.message);
+    }
+    S.requestPersist();
   })();
 
   // 오프라인 저장은 실제 배포 주소(https)에서만. 로컬 미리보기에서는 수정이 바로 보이도록 끄고 예전 저장분도 지움
