@@ -1,5 +1,5 @@
-// 오프라인 실행: 앱 파일을 휴대폰에 저장해 두고, 온라인일 때 새 버전으로 갱신
-const CACHE = 'hyojeong-budget-v5';
+// 오프라인 실행: 앱 파일을 휴대폰에 저장해 두고, 온라인이면 항상 새 버전으로 실행
+const CACHE = 'hyojeong-budget-v6';
 const ASSETS = [
   './', './index.html', './css/app.css', './js/calc.js', './js/store.js', './js/app.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
@@ -15,16 +15,23 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
+// 인터넷이 되면 항상 최신 파일을 먼저 받고(3초 넘게 걸리면 저장본), 안 되면 저장해 둔 파일로 실행
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   const key = req.mode === 'navigate' ? './index.html' : req;
   e.respondWith(caches.open(CACHE).then(async cache => {
-    const cached = await cache.match(key, { ignoreSearch: req.mode === 'navigate' });
-    const fresh = fetch(req).then(res => {
+    const cachedP = cache.match(key, { ignoreSearch: req.mode === 'navigate' });
+    const fresh = fetch(req, { cache: 'no-cache' }).then(res => {
       if (res.ok) cache.put(key, res.clone());
       return res;
-    }).catch(() => cached);
-    return cached || fresh;
+    });
+    const timeout = new Promise(r => setTimeout(r, 3000)).then(() => cachedP);
+    try {
+      const res = await Promise.race([fresh, timeout]);
+      return res || await fresh;
+    } catch (err) {
+      return (await cachedP) || Response.error();
+    }
   }));
 });

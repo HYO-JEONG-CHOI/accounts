@@ -489,6 +489,13 @@
       if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
     } else if (location.protocol === 'https:') {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+      // 새 버전이 설치되면 앱을 한 번 다시 불러와 바로 반영 (처음 설치 때는 제외)
+      const hadController = !!navigator.serviceWorker.controller;
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloaded || sheetOpen) return;
+        reloaded = true; location.reload();
+      });
     }
   }
 })();
