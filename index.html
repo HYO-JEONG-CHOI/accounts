@@ -17,6 +17,10 @@
 </head>
 <body>
 <div id="app">
+  <header class="topbar brand" id="brandBar">
+    <h1>효정 가계부</h1>
+    <button class="pill-btn" data-action="lock-toggle" id="lockBtn">효정입니다.</button>
+  </header>
   <header class="topbar" id="monthBar">
     <button class="icon-btn" data-action="prev-month" aria-label="이전 달">
       <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
@@ -32,7 +36,6 @@
   <main id="main">
     <section class="view" id="view-calendar"></section>
     <section class="view" id="view-budget" hidden></section>
-    <section class="view" id="view-stats" hidden></section>
     <section class="view" id="view-settings" hidden></section>
   </main>
 
@@ -46,9 +49,6 @@
     </button>
     <button class="tab" data-tab="budget" aria-label="예산">
       <svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18a2 2 0 0 1 2 2v1"/><rect x="4" y="8" width="16" height="11.5" rx="2.5"/><path d="M16 13.8h.01"/></svg><span>예산</span>
-    </button>
-    <button class="tab" data-tab="stats" aria-label="통계">
-      <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></svg><span>통계</span>
     </button>
     <button class="tab" data-tab="settings" aria-label="설정">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span>설정</span>

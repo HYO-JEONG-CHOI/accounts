@@ -99,24 +99,31 @@ test('월 합계는 그 달 날짜만, 주차 합계는 월~일 7일 전체', ()
   assert.strictEqual(s.count, 5);
 });
 
-test('주차 예산: 미설정 / 0원 / 초과 구분', () => {
+test('주차 예산: 기본 30만원 / 따로 정한 값 / 0원 / 초과', () => {
   const s = C.monthStats(data, 2026, 11, { y: 2026, m: 11, d: 16 });
-  assert.strictEqual(s.weeks[2].budget, null);
-  assert.strictEqual(s.weeks[2].remaining, null);
+  assert.strictEqual(s.weeks[2].budget, 300000);
+  assert.strictEqual(s.weeks[2].isDefault, true);
+  assert.strictEqual(s.weeks[2].remaining, 300000);
+  assert.strictEqual(s.weeks[0].isDefault, false);
   assert.strictEqual(s.weeks[0].remaining, -4500);
   assert.strictEqual(C.formatRate(s.weeks[0].rate), '130%');
   assert.strictEqual(s.weeks[1].budget, 0);
   assert.strictEqual(s.weeks[1].rate, 0);
-  assert.strictEqual(s.weekBudgetSum, 15000);
-  assert.strictEqual(s.setWeekCount, 2);
+  assert.strictEqual(s.weekBudgetSum, 15000 + 0 + 300000 * 2);
 });
 
-test('월 예산과 주차 예산은 독립, 차이만 계산', () => {
+test('이번 주차: 오늘이 든 주의 사용·잔여만', () => {
+  // 11/16(월) → 11월 3주차(11/16~11/22)
   const s = C.monthStats(data, 2026, 11, { y: 2026, m: 11, d: 16 });
-  assert.strictEqual(s.monthBudget, 400000);
-  assert.strictEqual(s.remaining, 365500);
-  assert.strictEqual(s.budgetGap, 385000);
-  assert.strictEqual(data.budgets['M:2026-11'], 400000);
+  assert.deepStrictEqual(s.weeks.map(w => w.isCurrent), [false, false, true, false]);
+  const w = C.currentWeek(data, { y: 2026, m: 11, d: 8 });
+  assert.deepStrictEqual([w.m, w.index, w.spent, w.budget, w.remaining], [11, 1, 19500, 15000, -4500]);
+  // 11/1(일)은 10월 마지막 주차, 12/1(화)은 11/30이 든 12월 1주차
+  const oct = C.currentWeek(data, { y: 2026, m: 11, d: 1 });
+  assert.deepStrictEqual([oct.y, oct.m, oct.key, oct.spent, oct.remaining], [2026, 10, '2026-10-26', 8000, 292000]);
+  const dec = C.currentWeek(data, { y: 2026, m: 12, d: 1 });
+  assert.deepStrictEqual([dec.m, dec.index, dec.spent], [12, 1, 111999]);
+  assert.strictEqual(C.monthStats(data, 2026, 10, { y: 2026, m: 11, d: 16 }).current, null);
 });
 
 test('전월 대비, 일평균', () => {
@@ -138,7 +145,6 @@ test('주차별 전주 대비 증감', () => {
 test('데이터 없는 달은 0원', () => {
   const s = C.monthStats({ expenses: [], budgets: {} }, 2026, 5, { y: 2026, m: 11, d: 16 });
   assert.strictEqual(s.total, 0);
-  assert.strictEqual(s.monthBudget, null);
   assert.strictEqual(s.changeRate, null);
 });
 

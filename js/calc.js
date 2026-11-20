@@ -55,7 +55,8 @@
     return { before, after: after <= n ? after : null, n };
   }
 
-  const monthBudgetKey = (y, m) => `M:${ym(y, m)}`;
+  // 주차 예산을 따로 정하지 않으면 이 금액 (따로 정하면 그 주만 바뀜)
+  const DEFAULT_WEEK_BUDGET = 300000;
   const weekBudgetKey = weekKey => `W:${weekKey}`;
 
   // 예전 방식(월 날짜만 자른 주차, 키 W:2026-11-W1)의 주차 예산을 새 주차 키로 옮김
@@ -109,40 +110,38 @@
   function monthStats(data, y, m, today = todayParts()) {
     const days = dailyTotals(data.expenses, y, m);
     const total = sum(days);
-    const monthBudget = data.budgets[monthBudgetKey(y, m)] ?? null;
 
     // 주차는 앞뒤 달 날짜도 포함하므로 날짜 범위로 직접 합산
     const wk = weeksOfMonth(y, m), from = wk[0].start, to = wk[wk.length - 1].end;
     const byDate = {};
     for (const e of data.expenses) if (e.date >= from && e.date <= to) byDate[e.date] = (byDate[e.date] || 0) + e.amount;
 
+    const todayStr = partsYmd(today);
     let prevSpent = null;
     const weeks = wk.map(w => {
       let spent = 0;
       for (let k = 0; k < 7; k++) spent += byDate[partsYmd(shiftDay(w.s.y, w.s.m, w.s.d, k))] || 0;
-      const budget = data.budgets[weekBudgetKey(w.key)] ?? null;
+      const stored = data.budgets[weekBudgetKey(w.key)];
+      const isDefault = stored == null;
+      const budget = isDefault ? DEFAULT_WEEK_BUDGET : stored;
       const change = prevSpent == null ? null : spent - prevSpent;
       prevSpent = spent;
       return {
-        ...w, spent, budget, change,
-        remaining: budget == null ? null : budget - spent,
-        rate: budget ? spent / budget : (budget === 0 ? (spent > 0 ? Infinity : 0) : null)
+        ...w, spent, budget, isDefault, change,
+        isCurrent: w.start <= todayStr && todayStr <= w.end,
+        remaining: budget - spent,
+        rate: budget ? spent / budget : (spent > 0 ? Infinity : 0)
       };
     });
-
-    const setWeeks = weeks.filter(w => w.budget != null);
-    const weekBudgetSum = setWeeks.length ? sum(setWeeks.map(w => w.budget)) : null;
 
     const prev = addMonths(y, m, -1);
     const prevTotal = monthTotal(data.expenses, prev.y, prev.m);
     const elapsed = elapsedDays(y, m, today);
 
     return {
-      y, m, days, total, monthBudget, weeks, weekBudgetSum,
-      setWeekCount: setWeeks.length,
-      remaining: monthBudget == null ? null : monthBudget - total,
-      rate: monthBudget ? total / monthBudget : (monthBudget === 0 ? (total > 0 ? Infinity : 0) : null),
-      budgetGap: monthBudget == null || weekBudgetSum == null ? null : monthBudget - weekBudgetSum,
+      y, m, days, total, weeks,
+      current: weeks.find(w => w.isCurrent) || null,
+      weekBudgetSum: sum(weeks.map(w => w.budget)),
       elapsed,
       dailyAvg: elapsed ? total / elapsed : 0,
       prevTotal,
@@ -150,6 +149,16 @@
       changeRate: prevTotal > 0 ? (total - prevTotal) / prevTotal : null,
       count: data.expenses.filter(e => e.date.startsWith(ym(y, m) + '-')).length
     };
+  }
+
+  // 오늘이 든 주차 (보고 있는 달과 상관없이). 월말·월초 주는 목요일이 있는 달 소속이라 앞뒤 달도 확인
+  function currentWeek(data, today = todayParts()) {
+    for (const k of [0, -1, 1]) {
+      const t = addMonths(today.y, today.m, k);
+      const w = monthStats(data, t.y, t.m, today).current;
+      if (w) return { ...w, y: t.y, m: t.m };
+    }
+    return null;
   }
 
   // ---------- 표시 형식 ----------
@@ -168,7 +177,7 @@
 
   const api = {
     pad, ymd, ym, daysInMonth, weekday, parseYmd, todayParts, addMonths, isValidYmd, shiftDay,
-    weeksOfMonth, outsideDays, monthBudgetKey, weekBudgetKey, migrateWeekBudgets, dailyTotals, monthTotal, elapsedDays, monthStats,
+    weeksOfMonth, outsideDays, DEFAULT_WEEK_BUDGET, weekBudgetKey, migrateWeekBudgets, dailyTotals, monthTotal, elapsedDays, monthStats, currentWeek,
     formatNum, formatWon, formatCompact, formatRate
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
